@@ -40,7 +40,7 @@ class DistributedDIIS(lib.diis.DIIS):
         else:
             try:
                 c = numpy.linalg.solve(h, g)
-            except numpy.linalg.linalg.LinAlgError as e:
+            except numpy.linalg.LinAlgError as e:
                 logger.warn(self, ' diis singular, eigh(h) %s', w)
                 raise e
         logger.debug1(self, 'diis-c %s', c)
@@ -68,5 +68,5 @@ class DistributedDIIS(lib.diis.DIIS):
 
 def restore(filename):
     '''Restore/construct diis object based on a diis file'''
-    return DIIS().restore(filename)
+    return DistributedDIIS().restore(filename)
 

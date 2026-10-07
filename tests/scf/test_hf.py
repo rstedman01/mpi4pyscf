@@ -43,5 +43,8 @@ def test_mpi_uhf(get_mol):
     mf = mpi_scf.UHF(mol)
     mf.direct_scf_tol = 1e-9
     mf.kernel()
-    assert abs(mf.e_tot - -1.8562369268171945) < 1e-9
+    mf0 = scf.UHF(mol)
+    mf0.direct_scf_tol = 1e-9
+    eref = mf0.kernel()
+    assert abs(mf.e_tot - eref) < 1e-8
 

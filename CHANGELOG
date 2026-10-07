@@ -1,3 +1,27 @@
+mpi4pyscf 0.4.0
+---------------
+Bind to pyscf>=2.5, mpi4py>=4.0, Python>=3.13  (tested with pyscf-2.13.0,
+mpi4py-4.1.2, Open MPI 4.1.6, Python 3.13, numpy 2.5)
+* Bugfix
+  - Deadlock on all worker ranks at the end of mpi.work_share_partition (used
+    by CCSD(T)) on Python>=3.3.  The worker event loop runs inside the import
+    of mpi4pyscf, and a helper thread unpickling mpi.Message blocked forever
+    on the package's import lock.
+  - NameError in CCSD(T) kernel and in the full-vvvv CCSD path
+    (process_clock/perf_counter), undefined _mo_without_core, and a typo in
+    CCSD.gather_amplitudes
+  - MP2 on workers failed with PySCF>=2.x (no _scf object on workers)
+  - lib.diis.restore referenced an undefined name; numpy.linalg.linalg no
+    longer exists in numpy 2
+* Changed
+  - Removed the distutils-based version check (distutils is gone in Python
+    3.12). pyscf>=2.5 is now required
+  - Warn at startup if the MPI library does not provide MPI_THREAD_MULTIPLE
+  - Tests compare to serial PySCF instead of hardcoded energies; added tests
+    for CCSD/CCSD(T) and the mpi4pyscf.tools.mpi communication helpers
+* Known issues
+  - mpi4pyscf.pbc (PBC density fitting) is not compatible with pyscf>=2.x
+
 mpi4pyscf 0.3.1 (2020-10-07)
 ----------------------------
 * Bugfix

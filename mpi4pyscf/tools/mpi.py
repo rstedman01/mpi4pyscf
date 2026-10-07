@@ -21,6 +21,19 @@ if 'pool' not in _registry:
 
 comm = pool.comm
 rank = pool.rank
+
+# Several algorithms (CCSD amplitude rotation, the CCSD(T) data server, the
+# work-sharing task queue) issue MPI calls from more than one thread at once.
+if rank == 0 and pool.size > 1 and MPI.Query_thread() < MPI.THREAD_MULTIPLE:
+    import warnings
+    warnings.warn(
+        'The MPI library only provides thread level %d, but mpi4pyscf needs '
+        'MPI_THREAD_MULTIPLE (%d).  Parallel runs may hang or return wrong '
+        'results.  Check that mpi4py is linked against the thread-safe variant '
+        'of your MPI library and that mpi4py.rc.thread_level has not been '
+        'lowered.' % (MPI.Query_thread(), MPI.THREAD_MULTIPLE),
+        RuntimeWarning, stacklevel=2)
+
 INT_MAX = 2147483647
 BLKSIZE = INT_MAX // 32 + 1
 

@@ -17,6 +17,7 @@ from pyscf import lib
 from pyscf import ao2mo
 from pyscf.ao2mo import _ao2mo
 from pyscf.cc import ccsd
+from pyscf.mp.mp2 import _mo_without_core
 from pyscf import __config__
 
 from mpi4pyscf.lib import logger
@@ -432,7 +433,7 @@ def _add_vvvv_full(mycc, t1T, t2T, eris, out=None, with_ovvv=False):
     '''Ht2 = numpy.einsum('ijcd,acdb->ijab', t2, vvvv)
     without using symmetry t2[ijab] = t2[jiba] in t2 or Ht2
     '''
-    time0 = process_clock(), perf_counter()
+    time0 = logger.process_clock(), logger.perf_counter()
     log = logger.Logger(mycc.stdout, mycc.verbose)
 
     nvir_seg, nvir, nocc = t2T.shape[:3]
@@ -743,7 +744,7 @@ def distribute_amplitudes_(mycc, t1=None, t2=None):
 def gather_amplitudes(mycc):
     '''Reconstruct the t1, t2 amplitudes from the distributed t2 tensors
     '''
-    t1, t2 = mycc.t1, mycc1.t2
+    t1, t2 = mycc.t1, mycc.t2
     t2 = mpi.gather(t2.transpose(2,3,0,1)).transpose(2,3,0,1)
     return t1, t2
 
@@ -1001,7 +1002,7 @@ def _make_eris_outcore(mycc, mo_coeff=None):
             dat = ao2mo._ao2mo.nr_e2(buf[:nrow], mo_coeff, (0,nmo,0,nmo),
                                      's4', 's1', out=outbuf, ao_loc=ao_loc)
             save_vir_frac(i0, i1, dat)
-    buf = buf_prefecth = outbuf = None
+    buf = buf_prefetch = outbuf = None
 
     cput1 = log.timer_debug1('transforming oppp', *cput1)
     log.timer('CCSD integral transformation', *cput0)

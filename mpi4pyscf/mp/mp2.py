@@ -34,7 +34,7 @@ def kernel(mp, mo_energy=None, mo_coeff=None, eris=None, with_t2=False,
         mo_coeff = None
         mo_energy = mp2._mo_energy_without_core(mp, mp.mo_energy)
     else:
-        assert(mp.frozen is 0 or mp.frozen is None)
+        assert(mp.frozen is None or (numpy.ndim(mp.frozen) == 0 and mp.frozen == 0))
 
     eris = getattr(mp, '_eris', None)
     if eris is None:
@@ -74,6 +74,8 @@ def kernel(mp, mo_energy=None, mo_coeff=None, eris=None, with_t2=False,
 
 @mpi.register_class_without__init__
 class MP2(mp2.MP2):
+    _keys = mp2.MP2._keys.union(['mo_energy'])
+
     def __init__(self, mf, frozen=None, mo_coeff=None, mo_occ=None):
         mp2.MP2.__init__(self, mf, frozen, mo_coeff, mo_occ)
         if mo_coeff is None or mo_coeff is self._scf.mo_coeff:
@@ -137,7 +139,15 @@ def _make_eris(mp, mo_coeff=None, verbose=None):
     nvir = nmo - nocc
 
     eris = mp2._ChemistsERIs()
-    eris._common_init_(mp, mo_coeff)
+    # The worker processes hold no SCF object (mp._scf), which
+    # _ChemistsERIs._common_init_ requires.  Initialize on the master and
+    # broadcast the results.
+    if rank == 0:
+        eris._common_init_(mp, mo_coeff)
+        comm.bcast((eris.mo_coeff, eris.fock, eris.mo_energy))
+    else:
+        eris.mol = mp.mol
+        eris.mo_coeff, eris.fock, eris.mo_energy = comm.bcast(None)
     nao = eris.mo_coeff.shape[0]
     assert(nvir <= nao)
     orbo = eris.mo_coeff[:,:nocc]
