@@ -3,9 +3,7 @@ An MPI plugin for PySCF
 
 mpi4pyscf is a plugin for PySCF which enables MPI (Message Passing Interface) parallelism.
 
-2020-10-07
-
-* [Latest version 0.3.1](https://github.com/mpipyscf/mpipyscf/releases/tag/v0.3.1)
+Requires Python >= 3.13, pyscf >= 2.5 and mpi4py >= 4.0.
 
 Quick start
 -----------
@@ -26,7 +24,7 @@ from pyscf import scf
 mf = scf.RHF(mol).run()
 
 # MPI parallelism
-from mpipyscf import scf
+from mpi4pyscf import scf
 mf = scf.RHF(mol).run()
 ```
 
@@ -36,5 +34,7 @@ Installation
 ------------
 
 ```
-pip install mpi4pyscf
+pip install . --no-deps
 ```
+Recommended to clone repo and install from source with `--no-deps` flag to keep pip from replacing an existing `mpi4py` with a generic package. This is especially important if you have built `mpi4py` against system MPI libraries.
+

@@ -46,7 +46,9 @@ def test_mpi_uks(get_mol):
     mf.xc = 'b3lyp'
     mf.direct_scf_tol = 1e-9
     mf.kernel()
-    eref = mol.UKS(xc='b3lyp').run().e_tot
-    assert abs(mf.e_tot - -76.38322442598239) < 1e-9
-    assert abs(mf.e_tot - eref) < 1e-9
+    mf0 = mol.UKS(xc='b3lyp')
+    mf0.direct_scf_tol = 1e-9
+    eref = mf0.kernel()
+    assert abs(mf0.e_tot - -76.38322442598239) < 1e-9
+    assert abs(mf0.e_tot - eref) < 1e-9
 
