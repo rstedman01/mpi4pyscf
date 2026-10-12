@@ -66,7 +66,8 @@ the work sent by rank 0.  Notes:
   `mycc.restore_from_diis_(diis_file)`.  The DIIS files are per rank
   (`<diis_file>__rank<i>`), so restart with the same number of ranks.  Use a
   different `diis_file` for the continuing run.
-* Tests: `mpiexec -np 2 tests/runtests.sh`.
+* Tests: `mpiexec -np 2 pytest tests` (or `mpiexec -np 2 tests/runtests.sh`).
+  Only rank 0 runs the tests; the other ranks serve it.
 
 Not supported
 -------------

@@ -17,6 +17,8 @@ mpi4py-4.1.2, Open MPI 4.1.6, Python 3.13, numpy 2.5)
   - Removed the distutils-based version check (distutils is gone in Python
     3.12). pyscf>=2.5 is now required
   - Warn at startup if the MPI library does not provide MPI_THREAD_MULTIPLE
+  - tests/conftest.py lets pytest be started on every rank
+    (mpiexec -np N pytest tests) without an INTERNALERROR on the workers
   - Tests compare to serial PySCF instead of hardcoded energies; added tests
     for CCSD/CCSD(T) and the mpi4pyscf.tools.mpi communication helpers
 * Known issues
