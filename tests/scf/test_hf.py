@@ -21,12 +21,12 @@ def test_jk(get_mol):
 
     vj, vk = mf.get_jk(mol, dm, hermi=0)
     vj0, vk0 = scf.hf.get_jk(mol, dm, hermi=0)
-    assert abs(vj0-vj).max() < 1e-9
-    assert abs(vk0-vk).max() < 1e-9
+    numpy.testing.assert_allclose(vj0, vj, rtol=0, atol=1e-9)
+    numpy.testing.assert_allclose(vk0, vk, rtol=0, atol=1e-9)
     vj = mf.get_j(mol, dm, hermi=0)
     vk = mf.get_k(mol, dm, hermi=0)
-    assert abs(vj0-vj).max() < 1e-9
-    assert abs(vk0-vk).max() < 1e-9
+    numpy.testing.assert_allclose(vj0, vj, rtol=0, atol=1e-9)
+    numpy.testing.assert_allclose(vk0, vk, rtol=0, atol=1e-9)
 
     dm = dm + dm.transpose(0,2,1)
     vj, vk = mpi_scf.hf.get_jk(mol, dm, hermi=1)
@@ -35,8 +35,8 @@ def test_jk(get_mol):
     assert abs(vk0-vk).max() < 1e-9
     vj = mpi_scf.hf.get_j(mol, dm, hermi=1)
     vk = mpi_scf.hf.get_k(mol, dm, hermi=1)
-    assert abs(vj0-vj).max() < 1e-9
-    assert abs(vk0-vk).max() < 1e-9
+    numpy.testing.assert_allclose(vj0, vj, rtol=0, atol=1e-9)
+    numpy.testing.assert_allclose(vk0, vk, rtol=0, atol=1e-9)
 
 def test_mpi_uhf(get_mol):
     mol = get_mol
@@ -46,5 +46,5 @@ def test_mpi_uhf(get_mol):
     mf0 = scf.UHF(mol)
     mf0.direct_scf_tol = 1e-9
     eref = mf0.kernel()
-    assert abs(mf.e_tot - eref) < 1e-9
+    numpy.testing.assert_allclose(mf.e_tot, eref, rtol=0, atol=1e-9)
 

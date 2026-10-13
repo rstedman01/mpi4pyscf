@@ -6,6 +6,7 @@ Parallel test of CCSD and CCSD(T) using RHF reference against serial PySCF imple
 '''
 
 import pytest 
+import numpy
 from pyscf import gto, scf, cc
 from mpi4pyscf import cc as mpicc
 
@@ -13,7 +14,10 @@ from mpi4pyscf import cc as mpicc
 def get_mf():
     mol = gto.M(atom='O 0 0 0; H 0 -0.757 0.587; H 0 0.757 0.587',
                 basis='ccpvtz', verbose=0)
-    return scf.RHF(mol).run()
+    mf = scf.RHF(mol)
+    mf.conv_tol = 1e-12
+    mf.conv_tol_grad = 1e-9
+    return mf.run()
 
 @pytest.mark.parametrize('frozen', [0,1])
 def test_ccsd_and_ccsd_t(get_mf, frozen):
@@ -30,5 +34,6 @@ def test_ccsd_and_ccsd_t(get_mf, frozen):
     mycc.kernel()
     et = mycc.ccsd_t()
     assert mycc.converged
-    assert abs(mycc.e_corr - ref.e_corr) < 1e-8
-    assert abs(et - et_ref) < 1e-8
+    
+    numpy.testing.assert_allclose(mycc.e_corr, ref.e_corr, atol=1e-9, rtol=0)
+    numpy.testing.assert_allclose(et, et_ref, atol=1e-9, rtol=0)

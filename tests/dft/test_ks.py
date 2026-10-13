@@ -1,9 +1,12 @@
 #!/usr/bin/env python
+import sys
 
-import pytest
 import numpy
 from pyscf import gto, dft
+import mpi4pyscf
 from mpi4pyscf import dft as mpi_dft
+
+import pytest
 
 @pytest.fixture
 def get_mol(scope='module'):
@@ -42,13 +45,17 @@ def test_veff(get_mol):
 
 def test_mpi_uks(get_mol):
     mol = get_mol
+    
     mf = mpi_dft.UKS(mol)
     mf.xc = 'b3lyp'
     mf.direct_scf_tol = 1e-9
-    mf.kernel()
+    empi = mf.kernel()
+    
     mf0 = mol.UKS(xc='b3lyp')
     mf0.direct_scf_tol = 1e-9
     eref = mf0.kernel()
-    assert abs(mf0.e_tot - -76.38322442598239) < 1e-9
-    assert abs(mf0.e_tot - eref) < 1e-9
+    
+    assert mf.converged
+    assert mf0.converged
+    numpy.testing.assert_allclose(empi, eref, rtol=0, atol=1e-9)
 

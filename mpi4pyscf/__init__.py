@@ -10,10 +10,8 @@ import pyscf
 def _version_tuple(v):
     return tuple(int(x) for x in re.findall(r'\d+', v)[:3])
 
-if _version_tuple(pyscf.__version__) < (2,5,0):
-    raise ImportError('mpi4pyscf %s requires pyscf>=2.5.0, found %s' 
-                        %(__version__, pyscf.__version__)
-                    )
+if _version_tuple(pyscf.__version__) < (2, 5, 0):
+    raise ImportError('mpi4pyscf %s requires pyscf>=2.5.0, found %s' %(__version__, pyscf.__version__))
 
 del _version_tuple, re
 
@@ -22,6 +20,7 @@ from pyscf import __all__
 
 # NOTE: suspend all slave processes at last
 from .tools import mpi
+
 if not mpi.pool.is_master():
     import sys
     import traceback

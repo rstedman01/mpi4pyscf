@@ -26,7 +26,7 @@ if rank == 0 and pool.size > 1 and MPI.Query_thread() < MPI.THREAD_MULTIPLE:
     import warnings
     warnings.warn(
         'The MPI library only provides thread level %d, but mpi4pyscf requires '
-        'MPI_THREAD_MULTIPLE (%d). Parallel runs may hang or reture incorrect '
+        'MPI_THREAD_MULTIPLE (%d). Parallel runs may hang or produce incorrect '
         'results. Check that mpi4py is linked against a thread-safe variant of '
         'your MPI library and that mpi4py.rc.thread_level has not been lowered.'
         % (MPI.Query_thread(), MPI.THREAD_MULTIPLE),
