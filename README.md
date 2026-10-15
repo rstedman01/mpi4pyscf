@@ -75,8 +75,13 @@ Periodic systems (`mpi4pyscf.pbc`)
 | Class | Status with PySCF 2.13 |
 |---|---|
 | `FFTDF` | Supported. Validated against serial PySCF (J, K, `get_pp`, `get_nuc`, KRHF energies; Gamma point and k-points; `kpts_band`) |
-| `AFTDF` | Supported. Validated as above. Exchange at k-points (without symmetry-adapted k-points) is evaluated on rank 0 only, because PySCF's new algorithm cannot be split over ranks through the old `prange` hook |
-| `DF` / `GDF`, `MDF` | **Not ported.** They raise `NotImplementedError`. Their integral build is a copy of the PySCF 1.7 code, and the class hierarchy and 3-center-integral machinery changed in PySCF 2.x. `MPI4PYSCF_EXPERIMENTAL_PBC_DF=1` bypasses the check, without any validation |
+| `AFTDF` | Supported. Validated as above. Exchange at k-points is evaluated on rank 0 only, because PySCF's new algorithm cannot be split over ranks through the old `prange` hook |
+| `DF` (`GDF`) | Supported in 1D, 2D and 3D, at the Gamma point and k-points, including `kpts_band`, `get_eri`/`ao2mo` and `loop`. Always uses the compensated-charge algorithm (PySCF's `GDF._prefer_ccdf = True`), independent of the number of processes, so compare with that setting. It agrees with serial PySCF to the integral `precision` (about 1e-11 for 3D at `precision=1e-10`). For 2D cells with the default truncated Coulomb kernel, PySCF's own builders differ by ~1e-8 and so does this. `get_pp`/`get_nuc` run on the master process only |
+| `MDF` | **Not ported.** Raises `NotImplementedError`. `MPI4PYSCF_EXPERIMENTAL_PBC_DF=1` bypasses the check, without any validation |
+
+The 3-index tensor is distributed over the auxiliary index: each process keeps
+a slice in its own temporary file (in `TMPDIR`), so disk space is needed there
+for every process running on a node.
 
 The `fuse_auxcell` / `auxbar` name changes are handled in
 `mpi4pyscf/pbc/df/_compat.py`.

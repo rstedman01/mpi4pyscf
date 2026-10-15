@@ -16,6 +16,8 @@ from pyscf.pbc.df import ft_ao
 from pyscf.pbc.df import df
 from pyscf.pbc.df.incore import wrap_int3c
 from pyscf.pbc.df.df import make_modrho_basis, unique
+from pyscf.pbc.df import gdf_builder, rsdf_builder
+from pyscf.pbc.lib.kpts_helper import member
 from pyscf.pbc.df.df_jk import zdotCN, is_zero, gamma_point
 from pyscf.pbc.df.aft import _sub_df_jk_
 from pyscf.gto.mole import PTR_COORD
@@ -24,7 +26,8 @@ from pyscf.pbc import gto as pbcgto
 
 from mpi4pyscf.lib import logger
 from mpi4pyscf.tools import mpi
-from mpi4pyscf.pbc.df._compat import fuse_auxcell, auxbar, require_experimental
+from mpi4pyscf.pbc.df._compat import fuse_auxcell, auxbar
+from mpi4pyscf.pbc.df._compat import unpack_ as _unpack_attrs
 from mpi4pyscf.pbc.df import df_jk as mpi_df_jk
 from mpi4pyscf.pbc.df import df_ao2mo as mpi_df_ao2mo
 from mpi4pyscf.pbc.df import aft as mpi_aft
@@ -33,18 +36,49 @@ comm = mpi.comm
 rank = mpi.rank
 
 
+def _setup_eta_mesh(mydf, auxcell):
+    '''Smoothing exponent eta and the plane-wave mesh of the compensated-charge
+    algorithm, estimated like pyscf.pbc.df.gdf_builder._CCGDFBuilder.build'''
+    cell = mydf.cell
+    if mydf.eta is None:
+        mydf.eta, mesh, ke_cutoff = gdf_builder._guess_eta(auxcell, mydf.kpts, mydf.mesh)
+        mydf.mesh = mesh
+    elif mydf.mesh is None:
+        ke_cutoff = gdf_builder.estimate_ke_cutoff_for_eta(cell, mydf.eta)
+        mydf.mesh = cell.cutoff_to_mesh(ke_cutoff)
+    mesh = numpy.array(mydf.mesh)
+    if cell.dimension == 2 and cell.low_dim_ft_type != 'inf_vacuum':
+        mesh[2] = rsdf_builder._estimate_meshz(cell)
+    elif cell.dimension < 2:
+        mesh[cell.dimension:] = cell.mesh[cell.dimension:]
+    mydf.mesh = cell.symmetrize_mesh(mesh)
+
+
 @mpi.parallel_call
 def build(mydf, j_only=None, with_j3c=True, kpts_band=None):
-# Unlike DF and AFT class, here MDF objects are synced once
-    if mpi.pool.size == 1:
-        return df.DF.build(mydf, j_only, with_j3c, kpts_band)
-
+    # All process counts, including 1, use this compensated-charge algorithm
+    # (the one selected by GDF._prefer_ccdf = True in the serial code), so that
+    # results do not depend on the number of processes.
     mydf = _sync_mydf(mydf)
+    # eta and mesh are estimated for the build.  As in the serial code, the
+    # attributes keep what the user set (None: estimate), so that the estimate
+    # is redone if kpts, the basis or the auxiliary basis change before the
+    # next build.
+    eta, mesh = mydf.eta, mydf.mesh
+    try:
+        return _build(mydf, j_only, with_j3c, kpts_band)
+    finally:
+        mydf.eta, mydf.mesh = eta, mesh
+
+
+def _build(mydf, j_only, with_j3c, kpts_band):
     cell = mydf.cell
     log = logger.Logger(mydf.stdout, mydf.verbose)
     log.debug('MPI info (rank, host, pid)  %s', mpi.platform_info())
 
     t1 = (logger.process_clock(), logger.perf_counter())
+    if j_only is not None:
+        mydf._j_only = j_only
     if mydf.kpts_band is not None:
         mydf.kpts_band = numpy.reshape(mydf.kpts_band, (-1,3))
     if kpts_band is not None:
@@ -56,7 +90,10 @@ def build(mydf, j_only=None, with_j3c=True, kpts_band=None):
 
     mydf.dump_flags()
 
-    mydf.auxcell = make_modrho_basis(cell, mydf.auxbasis, mydf.eta)
+    mydf.auxcell = make_modrho_basis(cell, mydf.auxbasis, mydf.exp_to_discard)
+    _setup_eta_mesh(mydf, mydf.auxcell)
+    # The master process decides, every process must use the same values.
+    mydf.eta, mydf.mesh = comm.bcast((mydf.eta, mydf.mesh))
 
     if mydf.kpts_band is None:
         kpts = mydf.kpts
@@ -469,7 +506,8 @@ def _assemble(mydf, kptij_lst, j3c_jobs, gen_int3c, ft_fuse, cderi_file, fswap, 
         for k in numpy.hstack(j2c_kpts_lists):
             val = [numpy.asarray(fswap['j3c-/%d/%d' % (job, k)]).ravel()
                    for job in job_ids]
-            val = mpi.gather(numpy.hstack(val))
+            # A process may have no job when there are fewer jobs than processes
+            val = mpi.gather(numpy.hstack(val) if val else numpy.zeros(0))
             if rank == 0:
                 naux1 = fswap['j3c-/0/%d'%k].shape[0]
                 if aosym_s2[k]:
@@ -487,18 +525,18 @@ def _assemble(mydf, kptij_lst, j3c_jobs, gen_int3c, ft_fuse, cderi_file, fswap, 
 
 
 @mpi.register_class
-class DF(df.DF, mpi_aft.AFTDF):
+class DF(df.DF):
+    '''Gaussian density fitting built with the compensated-charge algorithm.
 
-    def __init__(self, *args, **kwargs):
-        require_experimental('DF')
-        df.DF.__init__(self, *args, **kwargs)
+    The 3-index tensor is distributed over the auxiliary index: each process
+    holds a slice of it in its own file, and J/K/MO transformations are PySCF's
+    serial functions applied to the local slice and reduced.
+    '''
 
     build = build
     _make_j3c = _make_j3c
 
-    get_nuc = mpi_aft.get_nuc
-    get_pp = mpi_aft.get_pp
-    _int_nuc_vloc = mpi_aft._int_nuc_vloc
+    # get_nuc and get_pp are PySCF's own; they run on the master process only.
 
     def dump_flags(self, verbose=None):
         return df.DF.dump_flags(self, logger.Logger(self.stdout, self.verbose))
@@ -517,7 +555,7 @@ class DF(df.DF, mpi_aft.AFTDF):
                 '_cderi'     : self._cderi}
     def unpack_(self, dfdic):
         remote_cderi = dfdic.pop('_cderi')
-        self.__dict__.update(dfdic)
+        _unpack_attrs(self, dfdic)
 # Note when auxbasis was changed in the master process, _cderi on master is
 # cleared.  Following to reset _cderi and _cderi_to_save when necessary.
         if remote_cderi is None and self._cderi is not None:
@@ -555,7 +593,8 @@ class DF(df.DF, mpi_aft.AFTDF):
     get_eri = get_ao_eri = mpi_df_ao2mo.get_eri
     ao2mo = get_mo_eri = mpi_df_ao2mo.general
 
-    mpi_prange = prange = mpi_aft.AFTDF.mpi_prange
+    prange = mpi_aft.AFTDF.mpi_prange
+    mpi_prange = prange
 
 
     def loop(self):
@@ -565,6 +604,12 @@ class DF(df.DF, mpi_aft.AFTDF):
         # the master process.  E.g. the call to with_df.loop in dfccsd
         serial_mode = mpi.pool.worker_status == 'P'
         if serial_mode:
+            # The returned generator is consumed after pool.apply has returned,
+            # i.e. outside of the parallel region.  Building the integrals on
+            # demand from inside it would start a collective call that the
+            # workers do not expect.
+            if self._cderi is None:
+                self.build(j_only=self._j_only)
             return loop_yield_then_reduce(self)
         else:
             return df.DF.loop(self)
@@ -605,12 +650,14 @@ if __name__ == '__main__':
     from pyscf.pbc import gto as pgto
     from mpi4pyscf.pbc import df
     cell = pgto.M(atom='He 0 0 0; He 0 0 1', a=numpy.eye(3)*4, mesh=[11]*3)
+    numpy.random.seed(19)
+    kpts = numpy.random.random((5,3))
     mydf = df.DF(cell, kpts)
 
     v = mydf.get_nuc()
     print(v.shape)
-    #v = mydf.get_pp(kpts)
-    #print(v.shape)
+    v = mydf.get_pp(kpts)
+    print(v.shape)
 
     nao = cell.nao_nr()
     dm = numpy.ones((nao,nao))

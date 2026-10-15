@@ -587,6 +587,10 @@ def _distribute_call(module, name, reg_procs, args, kwargs):
         fn = name
     else:
         fn = getattr(importlib.import_module(module), name)
+        # Functions decorated with reduced_yield provide a separate entry point
+        # for the call coming from the master, which streams the yielded values
+        # to it.  Plain (nested) calls inside a parallel region must not do so.
+        fn = getattr(fn, '_mpi_entry', fn)
         if dev is None:
             pass
         elif isinstance(dev, str) and dev[0] == '{':
@@ -694,12 +698,14 @@ else:
     def reduced_yield(fn=None, skip_args=None, skip_kwargs=None):
         def mpi_map(f):
             def client_yield(*args, **kwargs):
-                if pool.size <= 1 or pool.worker_status == 'R':
-                    return f(*args, **kwargs)
-                else:
-                    for x in f(*args, **kwargs):
-                        comm.send(x, 0)
-                    comm.send(Message.EndOfYeild, 0)
+                return f(*args, **kwargs)
+            def send_to_master(*args, **kwargs):
+                # Workers are always in the running ('R') state while they
+                # execute a task, so this cannot be selected by worker_status.
+                for x in f(*args, **kwargs):
+                    comm.send(x, 0)
+                comm.send(Message.EndOfYeild, 0)
+            client_yield._mpi_entry = send_to_master
             client_yield.__doc__ = f.__doc__
             return client_yield
 

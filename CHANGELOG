@@ -29,7 +29,19 @@ mpi4py-4.1.2, Open MPI 4.1.6, Python 3.13, numpy 2.5)
     G=0 exchange treatment follows the installed pyscf (changed in 2.13);
     kpts is a property in pyscf>=2.x and was not synchronized to the workers
   - FFTDF/AFTDF.get_jk now default to exxdiv=None, as in PySCF
-  - DF/GDF/MDF are not ported yet and raise NotImplementedError
+  - DF (GDF) works with pyscf-2.13: 1D/2D/3D, Gamma point and k-points,
+    kpts_band, get_eri/ao2mo, loop; tested against serial PySCF. It always
+    uses the compensated-charge algorithm, independent of the process count.
+    DF.get_pp/get_nuc are PySCF's own and run on the master process
+  - DF class no longer inherits the MPI AFTDF (GDF does not derive from AFTDF
+    in PySCF 2.x); eta/mesh are estimated as in pyscf's _CCGDFBuilder;
+    make_modrho_basis was called with eta instead of exp_to_discard;
+    undefined name `member`
+  - mpi.reduced_yield never streamed the workers' values to the master
+    (workers are always in the running state), so DF.loop/AFTDF.loop in serial
+    mode hung or lost data; building the integrals lazily from inside the
+    returned generator broke the collective-call protocol
+  - MDF is not ported yet and raises NotImplementedError
   - Added pbc/df/_compat.py (fuse_auxcell, auxbar, get_pp helpers, k-points)
 * Known issues
   - PySCF's MPI (T) kernel (lib/cc/ccsd_t.c, MPICCget_wv) treats the

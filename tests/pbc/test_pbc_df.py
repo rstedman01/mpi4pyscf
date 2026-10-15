@@ -124,9 +124,9 @@ def test_kpts_set_after_construction(cell):
                     ref.get_jk(dm, kpts=kpts, with_k=False)[0], rtol=0, atol=ATOL)
 
 
-@pytest.mark.parametrize('name', ['DF', 'GDF', 'MDF'])
+@pytest.mark.parametrize('name', ['MDF'])
 def test_density_fitting_classes_are_guarded(cell, name, monkeypatch):
-    # Not ported to PySCF 2.x yet: must fail loudly, not return unchecked numbers
+    # MDF is not ported to PySCF 2.x yet: must fail loudly, not return unchecked numbers
     monkeypatch.delenv('MPI4PYSCF_EXPERIMENTAL_PBC_DF', raising=False)
     with pytest.raises(NotImplementedError):
         getattr(mdf, name)(cell)
