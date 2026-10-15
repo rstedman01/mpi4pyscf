@@ -25,6 +25,7 @@ from pyscf.pbc.df.aft import _sub_df_jk_
 
 from mpi4pyscf.lib import logger
 from mpi4pyscf.tools import mpi
+from mpi4pyscf.pbc.df._compat import unpack_, check_kpts
 from mpi4pyscf.pbc.df import fft_jk as mpi_fft_jk
 
 comm = mpi.comm
@@ -35,10 +36,7 @@ rank = mpi.rank
 def get_nuc(mydf, kpts):
     mydf = _sync_mydf(mydf)
     cell = mydf.cell
-    if kpts is None:
-        kpts_lst = numpy.zeros((1,3))
-    else:
-        kpts_lst = numpy.reshape(kpts, (-1,3))
+    kpts_lst, is_single_kpt = check_kpts(mydf, kpts)
     if abs(kpts_lst).sum() < 1e-9:  # gamma_point
         dtype = numpy.float64
     else:
@@ -63,7 +61,7 @@ def get_nuc(mydf, kpts):
     vne = mpi.reduce(lib.asarray(vne))
 
     if rank == 0:
-        if kpts is None or numpy.shape(kpts) == (3,):
+        if is_single_kpt:
             vne = vne[0]
         return vne
 
@@ -72,10 +70,7 @@ def get_nuc(mydf, kpts):
 def get_pp(mydf, kpts=None):
     mydf = _sync_mydf(mydf)
     cell = mydf.cell
-    if kpts is None:
-        kpts_lst = numpy.zeros((1,3))
-    else:
-        kpts_lst = numpy.reshape(kpts, (-1,3))
+    kpts_lst, is_single_kpt = check_kpts(mydf, kpts)
     if abs(kpts_lst).sum() < 1e-9:
         dtype = numpy.float64
     else:
@@ -168,7 +163,7 @@ def get_pp(mydf, kpts=None):
                 vpp[k] += vppnl[k].real
             else:
                 vpp[k] += vppnl[k]
-        if kpts is None or numpy.shape(kpts) == (3,):
+        if is_single_kpt:
             vpp = vpp[0]
         return vpp
 
@@ -194,8 +189,7 @@ class FFTDF(fft.FFTDF):
                 'kpts'      : self.kpts,
                 'mesh'      : self.mesh}
     def unpack_(self, dfdic):
-        self.__dict__.update(dfdic)
-        return self
+        return unpack_(self, dfdic)
 
     def mpi_aoR_loop(self, grids=None, kpts=None, deriv=0):
         if grids is None:
@@ -234,7 +228,7 @@ class FFTDF(fft.FFTDF):
     get_nuc = get_nuc
 
     def get_jk(self, dm, hermi=1, kpts=None, kpts_band=None,
-               with_j=True, with_k=True, omega=None, exxdiv='ewald'):
+               with_j=True, with_k=True, omega=None, exxdiv=None):
         # J/K for RSH functionals
         if omega is not None:
             return _sub_df_jk_(self, dm, hermi, kpts, kpts_band,

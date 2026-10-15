@@ -69,8 +69,14 @@ the work sent by rank 0.  Notes:
 * Tests: `mpiexec -np 2 pytest tests` (or `mpiexec -np 2 tests/runtests.sh`).
   Only rank 0 runs the tests; the other ranks serve it.
 
-Not supported
--------------
+Periodic systems (`mpi4pyscf.pbc`)
+----------------------------------
 
-The periodic modules `mpi4pyscf.pbc.df` (GDF/MDF/AFT) rely on PySCF internals
-that were rewritten in PySCF 2.x and no longer import.
+| Class | Status with PySCF 2.13 |
+|---|---|
+| `FFTDF` | Supported. Validated against serial PySCF (J, K, `get_pp`, `get_nuc`, KRHF energies; Gamma point and k-points; `kpts_band`) |
+| `AFTDF` | Supported. Validated as above. Exchange at k-points (without symmetry-adapted k-points) is evaluated on rank 0 only, because PySCF's new algorithm cannot be split over ranks through the old `prange` hook |
+| `DF` / `GDF`, `MDF` | **Not ported.** They raise `NotImplementedError`. Their integral build is a copy of the PySCF 1.7 code, and the class hierarchy and 3-center-integral machinery changed in PySCF 2.x. `MPI4PYSCF_EXPERIMENTAL_PBC_DF=1` bypasses the check, without any validation |
+
+The `fuse_auxcell` / `auxbar` name changes are handled in
+`mpi4pyscf/pbc/df/_compat.py`.

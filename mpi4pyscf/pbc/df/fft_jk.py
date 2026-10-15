@@ -20,6 +20,7 @@ from pyscf.pbc.dft import numint
 
 from mpi4pyscf.lib import logger
 from mpi4pyscf.tools import mpi
+from mpi4pyscf.pbc.df._compat import EXXDIV_IN_COULG
 
 comm = mpi.comm
 rank = mpi.rank
@@ -39,26 +40,35 @@ def get_j_kpts(mydf, dm_kpts, hermi=1, kpts=numpy.zeros((1,3)),
     coulG = tools.get_coulG(cell, mesh=mesh)
     ngrids = len(coulG)
 
-    vR = rhoR = numpy.zeros((nset,ngrids))
+    # The density is real for a Hermitian density matrix or at the Gamma point.
+    # Otherwise it, and the potential, are complex (as in PySCF's fft_jk).
+    real_rho = hermi == 1 or is_zero(kpts)
+    rho_dtype = numpy.float64 if real_rho else numpy.complex128
+    rhoR = numpy.zeros((nset,ngrids), dtype=rho_dtype)
     for ao_ks_etc, p0, p1 in mydf.mpi_aoR_loop(mydf.grids, kpts):
         ao_ks = ao_ks_etc[0]
         for k, ao in enumerate(ao_ks):
             for i in range(nset):
-                rhoR[i,p0:p1] += numint.eval_rho(cell, ao, dms[i,k])
+                if real_rho:
+                    rhoR[i,p0:p1] += numint.eval_rho(cell, ao, dms[i,k]).real
+                else:
+                    ao_dm = lib.dot(ao, dms[i,k])
+                    rhoR[i,p0:p1] += numpy.einsum('xi,xi->x', ao_dm, ao.conj())
         ao = ao_ks = None
 
     rhoR = mpi.allreduce(rhoR)
+    vR = numpy.empty_like(rhoR)
     for i in range(nset):
         rhoR[i] *= 1./nkpts
         rhoG = tools.fft(rhoR[i], mesh)
         vG = coulG * rhoG
-        vR[i] = tools.ifft(vG, mesh).real
+        vR[i] = tools.ifft(vG, mesh).real if real_rho else tools.ifft(vG, mesh)
 
     kpts_band, input_band = _format_kpts_band(kpts_band, kpts), kpts_band
     nband = len(kpts_band)
     weight = cell.vol / ngrids
     vR *= weight
-    if gamma_point(kpts_band):
+    if gamma_point(kpts_band) and real_rho:
         vj_kpts = numpy.zeros((nset,nband,nao,nao))
     else:
         vj_kpts = numpy.zeros((nset,nband,nao,nao), dtype=numpy.complex128)
@@ -69,7 +79,7 @@ def get_j_kpts(mydf, dm_kpts, hermi=1, kpts=numpy.zeros((1,3)),
                 vj_kpts[i,k] += lib.dot(ao.T.conj()*vR[i,p0:p1], ao)
 
     vj_kpts = mpi.reduce(vj_kpts)
-    if gamma_point(kpts_band):
+    if gamma_point(kpts_band) and real_rho:
         vj_kpts = vj_kpts.real
     return _format_jks(vj_kpts, dm_kpts, input_band, kpts)
 
@@ -140,7 +150,9 @@ def get_k_kpts(mydf, dm_kpts, hermi=1, kpts=numpy.zeros((1,3)),
         # If we have an ewald exxdiv, we add the G=0 correction near the
         # end of the function to bypass any discretization errors
         # that arise from the FFT.
-        if exxdiv == 'ewald' or exxdiv is None:
+        if EXXDIV_IN_COULG:
+            coulG = tools.get_coulG(cell, kpt2-kpt1, exxdiv, mydf, mesh)
+        elif exxdiv == 'ewald' or exxdiv is None:
             coulG = tools.get_coulG(cell, kpt2-kpt1, False, mydf, mesh)
         else:
             coulG = tools.get_coulG(cell, kpt2-kpt1, exxdiv, mydf, mesh)
@@ -200,7 +212,7 @@ def get_k_kpts(mydf, dm_kpts, hermi=1, kpts=numpy.zeros((1,3)),
         vk_kpts = vk_kpts.real
 
     if rank == 0:
-        if exxdiv == 'ewald':
+        if exxdiv == 'ewald' and not EXXDIV_IN_COULG:
             _ewald_exxdiv_for_G0(cell, kpts, dms, vk_kpts, kpts_band=kpts_band)
         return _format_jks(vk_kpts, dm_kpts, input_band, kpts)
 

@@ -20,6 +20,8 @@ from pyscf.pbc import gto as pbcgto
 
 from mpi4pyscf.lib import logger
 from mpi4pyscf.tools import mpi
+from mpi4pyscf.pbc.df._compat import unpack_
+from mpi4pyscf.pbc.df import _compat
 from mpi4pyscf.pbc.df import aft_jk as mpi_aft_jk
 from mpi4pyscf.pbc.df import aft_ao2mo as mpi_aft_ao2mo
 
@@ -37,27 +39,22 @@ def get_nuc(mydf, kpts=None):
 @mpi.parallel_call
 def get_pp_loc_part1(mydf, kpts=None):
     mydf = _sync_mydf(mydf)
-    vne = aft.get_pp_loc_part1(mydf, kpts)
+    vne = _compat.get_pp_loc_part1(mydf, kpts)
     return mpi.reduce(vne)
 
 @mpi.parallel_call
 def get_pp(mydf, kpts=None):
-    if kpts is None:
-        kpts_lst = numpy.zeros((1,3))
-    else:
-        kpts_lst = numpy.reshape(kpts, (-1,3))
-
     mydf = _sync_mydf(mydf)
-    vpp = aft.get_pp_loc_part1(mydf, kpts_lst)
+    kpts_lst, is_single_kpt = _compat.check_kpts(mydf, kpts)
+    vpp = _compat.get_pp_loc_part1(mydf, kpts_lst, with_pseudo=True)
     vpp = mpi.reduce(lib.asarray(vpp))
 
     if rank == 0:
-        vloc2 = pseudo.pp_int.get_pp_loc_part2(mydf.cell, kpts_lst)
-        vppnl = pseudo.pp_int.get_pp_nl(mydf.cell, kpts_lst)
-        for k in range(len(kpts_lst)):
-            vpp[k] += numpy.asarray(vppnl[k] + vloc2[k], dtype=vpp.dtype)
-
-        if kpts is None or numpy.shape(kpts) == (3,):
+        vpp2 = _compat.get_pp_loc_part2_and_nl(mydf.cell, kpts_lst)
+        if not numpy.iscomplexobj(vpp):
+            vpp2 = vpp2.real
+        vpp = vpp + vpp2
+        if is_single_kpt:
             vpp = vpp[0]
         return vpp
 
@@ -125,15 +122,17 @@ class AFTDF(aft.AFTDF):
         return {'verbose'   : self.verbose,
                 'max_memory': self.max_memory,
                 'blockdim'  : self.blockdim,
-                'eta'       : self.eta,
                 'kpts'      : self.kpts,
-                'mesh'      : self.mesh}
+                'mesh'      : self.mesh,
+                'time_reversal_symmetry': self.time_reversal_symmetry}
     def unpack_(self, dfdic):
-        self.__dict__.update(dfdic)
-        return self
+        return unpack_(self, dfdic)
 
     def prange(self, start, stop, step=None):
         # affect pw_loop and ft_loop function
+        if getattr(self, '_mpi_serial', False):
+            # Whole loop on this rank, for code that is run on rank 0 only
+            return lib.prange(start, stop, step if step is not None else stop - start)
         size = stop - start
         mpi_size = mpi.pool.size
         segsize = (size+mpi_size-1) // mpi_size
@@ -154,7 +153,7 @@ class AFTDF(aft.AFTDF):
     ao2mo = get_mo_eri = mpi_aft_ao2mo.general
 
     def get_jk(self, dm, hermi=1, kpts=None, kpts_band=None,
-               with_j=True, with_k=True, omega=None, exxdiv='ewald'):
+               with_j=True, with_k=True, omega=None, exxdiv=None):
         '''Gamma-point calculation by default'''
         # J/K for RSH functionals
         if omega is not None:

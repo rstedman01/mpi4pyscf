@@ -20,11 +20,20 @@ get_j_kpts = mpi.call_then_reduce(aft_jk.get_j_kpts)
 @mpi.parallel_call
 def get_k_kpts(mydf, dm_kpts, hermi=1, kpts=numpy.zeros((1,3)), kpts_band=None,
                exxdiv=None):
-    if rank != 0:  # to apply df_jk._ewald_exxdiv_for_G0 function once
-        exxdiv = None
-    vk = aft_jk.get_k_kpts(mydf, dm_kpts, hermi, kpts, kpts_band, exxdiv)
-    vk = mpi.reduce(vk)
-    return vk
+    # Since PySCF 2.x aft_jk.get_k_kpts evaluates K with a supercell algorithm
+    # (ExtendedMole, k-point time-reversal pairs, threaded C kernels) that does
+    # not go through mydf.prange/ft_loop, the hook this module used to divide
+    # the work over the MPI ranks.  Every rank would compute the complete K and
+    # mpi.reduce would then multiply it by the number of ranks.  Until this is
+    # parallelized for real, evaluate it on rank 0 only; it also applies the
+    # Ewald G=0 term once.
+    if rank != 0:
+        return None
+    mydf._mpi_serial = True
+    try:
+        return aft_jk.get_k_kpts(mydf, dm_kpts, hermi, kpts, kpts_band, exxdiv)
+    finally:
+        mydf._mpi_serial = False
 
 
 ##################################################

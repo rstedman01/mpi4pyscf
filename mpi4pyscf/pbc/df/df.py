@@ -15,7 +15,7 @@ from pyscf import lib
 from pyscf.pbc.df import ft_ao
 from pyscf.pbc.df import df
 from pyscf.pbc.df.incore import wrap_int3c
-from pyscf.pbc.df.df import fuse_auxcell, make_modrho_basis, unique
+from pyscf.pbc.df.df import make_modrho_basis, unique
 from pyscf.pbc.df.df_jk import zdotCN, is_zero, gamma_point
 from pyscf.pbc.df.aft import _sub_df_jk_
 from pyscf.gto.mole import PTR_COORD
@@ -24,6 +24,7 @@ from pyscf.pbc import gto as pbcgto
 
 from mpi4pyscf.lib import logger
 from mpi4pyscf.tools import mpi
+from mpi4pyscf.pbc.df._compat import fuse_auxcell, auxbar, require_experimental
 from mpi4pyscf.pbc.df import df_jk as mpi_df_jk
 from mpi4pyscf.pbc.df import df_ao2mo as mpi_df_ao2mo
 from mpi4pyscf.pbc.df import aft as mpi_aft
@@ -269,7 +270,7 @@ def _make_j3c(mydf, cell, auxcell, kptij_lst, cderi_file):
             aosym = 's1'
 
         if aosym == 's2' and cell.dimension == 3:
-            vbar = fuse(mydf.auxbar(fused_cell))
+            vbar = fuse(auxbar(mydf, fused_cell))
             ovlp = cell.pbc_intor('int1e_ovlp', hermi=1, kpts=adapted_kptjs)
             ovlp = [lib.pack_tril(s) for s in ovlp]
 
@@ -488,6 +489,10 @@ def _assemble(mydf, kptij_lst, j3c_jobs, gen_int3c, ft_fuse, cderi_file, fswap, 
 @mpi.register_class
 class DF(df.DF, mpi_aft.AFTDF):
 
+    def __init__(self, *args, **kwargs):
+        require_experimental('DF')
+        df.DF.__init__(self, *args, **kwargs)
+
     build = build
     _make_j3c = _make_j3c
 
@@ -521,7 +526,7 @@ class DF(df.DF, mpi_aft.AFTDF):
         return self
 
     def get_jk(self, dm, hermi=1, kpts=None, kpts_band=None,
-               with_j=True, with_k=True, omega=None, exxdiv='ewald'):
+               with_j=True, with_k=True, omega=None, exxdiv=None):
         # J/K for RSH functionals
         if omega is not None:
             return _sub_df_jk_(self, dm, hermi, kpts, kpts_band,

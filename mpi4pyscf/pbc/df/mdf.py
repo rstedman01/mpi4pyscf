@@ -20,7 +20,7 @@ from pyscf import lib
 from pyscf.pbc.df import ft_ao
 from pyscf.pbc.df import mdf
 from pyscf.pbc.df.incore import wrap_int3c
-from pyscf.pbc.df.df import fuse_auxcell, unique
+from pyscf.pbc.df.df import unique
 from pyscf.pbc.df.df_jk import zdotCN, is_zero, gamma_point
 from pyscf.pbc.df.aft import _sub_df_jk_
 from pyscf.gto.mole import PTR_COORD
@@ -28,6 +28,7 @@ from pyscf.ao2mo.outcore import balance_segs
 
 from mpi4pyscf.lib import logger
 from mpi4pyscf.tools import mpi
+from mpi4pyscf.pbc.df._compat import fuse_auxcell, auxbar, require_experimental
 from mpi4pyscf.pbc.df import mdf_jk as mpi_mdf_jk
 from mpi4pyscf.pbc.df import mdf_ao2mo as mpi_mdf_ao2mo
 from mpi4pyscf.pbc.df import df as mpi_df
@@ -216,7 +217,7 @@ def _make_j3c(mydf, cell, auxcell, kptij_lst, cderi_file):
             aosym = 's1'
 
         if aosym == 's2' and cell.dimension == 3:
-            vbar = fuse(mydf.auxbar(fused_cell))
+            vbar = fuse(auxbar(mydf, fused_cell))
             ovlp = cell.pbc_intor('int1e_ovlp', hermi=1, kpts=adapted_kptjs)
             ovlp = [lib.pack_tril(s) for s in ovlp]
 
@@ -286,6 +287,10 @@ def _make_j3c(mydf, cell, auxcell, kptij_lst, cderi_file):
 @mpi.register_class
 class MDF(mdf.MDF, mpi_df.DF):
 
+    def __init__(self, *args, **kwargs):
+        require_experimental('MDF')
+        mdf.MDF.__init__(self, *args, **kwargs)
+
     def pack(self):
         return {'verbose'   : self.verbose,
                 'max_memory': self.max_memory,
@@ -306,7 +311,7 @@ class MDF(mdf.MDF, mpi_df.DF):
     _int_nuc_vloc = mpi_aft._int_nuc_vloc
 
     def get_jk(self, dm, hermi=1, kpts=None, kpts_band=None,
-               with_j=True, with_k=True, omega=None, exxdiv='ewald'):
+               with_j=True, with_k=True, omega=None, exxdiv=None):
         # J/K for RSH functionals
         if omega is not None:
             return _sub_df_jk_(self, dm, hermi, kpts, kpts_band,

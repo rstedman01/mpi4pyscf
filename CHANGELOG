@@ -21,8 +21,20 @@ mpi4py-4.1.2, Open MPI 4.1.6, Python 3.13, numpy 2.5)
     (mpiexec -np N pytest tests) without an INTERNALERROR on the workers
   - Tests compare to serial PySCF instead of hardcoded energies; added tests
     for CCSD/CCSD(T) and the mpi4pyscf.tools.mpi communication helpers
+* PBC (mpi4pyscf.pbc.df)
+  - FFTDF and AFTDF work with pyscf-2.13 and are tested against serial PySCF
+  - Fixed: AFTDF exchange at k-points was multiplied by the number of ranks
+    (pyscf's new algorithm does not use the prange hook); complex densities
+    in FFTDF.get_j; get_nuc/get_pp return shape for kpts=None (pyscf>=2.10);
+    G=0 exchange treatment follows the installed pyscf (changed in 2.13);
+    kpts is a property in pyscf>=2.x and was not synchronized to the workers
+  - FFTDF/AFTDF.get_jk now default to exxdiv=None, as in PySCF
+  - DF/GDF/MDF are not ported yet and raise NotImplementedError
+  - Added pbc/df/_compat.py (fuse_auxcell, auxbar, get_pp helpers, k-points)
 * Known issues
-  - mpi4pyscf.pbc (PBC density fitting) is not compatible with pyscf>=2.x
+  - PySCF's MPI (T) kernel (lib/cc/ccsd_t.c, MPICCget_wv) treats the
+    occupied-virtual Fock term with t2 indices swapped relative to the serial
+    kernel; about 1e-10 Eh in E(T) with default SCF settings
 
 mpi4pyscf 0.3.1 (2020-10-07)
 ----------------------------
